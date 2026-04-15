@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>幸运大转盘</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 48px;
+    color: #333;
+  }
+
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 24px; color: #222; }
+
+  /* 转盘 */
+  .wheel-wrapper { position: relative; margin-bottom: 32px; }
+
+  .wheel-canvas {
+    display: block;
+    border-radius: 50%;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+    transition: none;
+  }
+
+  .wheel-canvas.spinning {
+    transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+  }
+
+  /* 指针 */
+  .pointer {
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .pointer::before {
+    content: '';
+    display: block;
+    width: 0; height: 0;
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-top: 36px solid #2d2d2d;
+  }
+
+  .pointer::after {
+    content: '';
+    display: block;
+    width: 10px; height: 10px;
+    background: #2d2d2d;
+    border-radius: 50%;
+    margin: -2px auto 0;
+  }
+
+  /* 按钮 */
+  .btn { cursor: pointer; border: none; outline: none; border-radius: 40px; }
+
+  .btn-spin {
+    width: 160px; height: 48px;
+    background: #2d2d2d; color: #fff;
+    font-size: 16px; font-weight: 600;
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+    transition: background 0.2s;
+  }
+
+  .btn-spin:hover { background: #444; }
+  .btn-spin:disabled { background: #bbb; cursor: not-allowed; }
+
+  .btn-settings {
+    font-size: 13px; color: #999;
+    background: none; padding: 8px;
+  }
+
+  .btn-settings:hover { color: #555; }
+
+  /* 设置面板 */
+  .settings-panel {
+    position: fixed; top: 0; right: -420px; bottom: 0;
+    width: 380px; max-width: 90vw;
+    background: #fff;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    z-index: 100;
+    display: flex; flex-direction: column;
+    transition: right 0.3s ease;
+    overflow: hidden;
+  }
+
+  .settings-panel.open { right: 0; }
+
+  .settings-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+  }
+
+  .settings-header h2 { font-size: 16px; font-weight: 600; }
+
+  .btn-close {
+    width: 32px; height: 32px;
+    background: #f0f0f0; color: #666;
+    font-size: 20px; line-height: 32px; text-align: center;
+    border-radius: 50%; cursor: pointer; border: none;
+  }
+
+  .settings-body {
+    flex: 1; overflow-y: auto; padding: 16px 20px;
+  }
+
+  .prize-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .color-swatch {
+    width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  .prize-name {
+    flex: 1; min-width: 0;
+    border: 1px solid #ddd; border-radius: 6px;
+    padding: 6px 10px; font-size: 14px; outline: none;
+    background: #fafafa;
+  }
+
+  .prize-name:focus { border-color: #2d2d2d; background: #fff; }
+
+  .weight-ctrl {
+    display: flex; align-items: center; gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .weight-btn {
+    width: 28px; height: 28px;
+    background: #f0f0f0; color: #333;
+    font-size: 18px; line-height: 28px; text-align: center;
+    border-radius: 50%; cursor: pointer; border: none;
+    font-weight: 400;
+  }
+
+  .weight-btn:hover { background: #e0e0e0; }
+
+  .weight-val {
+    font-size: 14px; color: #333; font-weight: 600;
+    min-width: 28px; text-align: center;
+  }
+
+  .pct-tag {
+    font-size: 12px; color: #999; flex-shrink: 0; min-width: 36px; text-align: right;
+  }
+
+  .btn-del {
+    width: 24px; height: 24px;
+    background: none; color: #ccc;
+    font-size: 20px; line-height: 24px; text-align: center;
+    cursor: pointer; border: none; flex-shrink: 0;
+  }
+
+  .btn-del:hover { color: #e00; }
+
+  .settings-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #eee;
+    flex-shrink: 0;
+  }
+
+  .btn-add {
+    width: 100%; padding: 10px;
+    background: #f5f5f5; color: #666;
+    font-size: 14px; border-radius: 8px;
+    cursor: pointer; border: 1px dashed #ccc;
+    text-align: center; margin-bottom: 12px;
+  }
+
+  .btn-add:hover { background: #eee; }
+
+  /* 占比预览条 */
+  .bar-preview {
+    display: flex; height: 20px; border-radius: 10px; overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .bar-seg { height: 100%; transition: width 0.2s; min-width: 2px; }
+
+  .btn-save {
+    width: 100%; padding: 12px;
+    background: #2d2d2d; color: #fff;
+    font-size: 15px; font-weight: 600;
+    border-radius: 8px; cursor: pointer; border: none;
+  }
+
+  .btn-save:hover { background: #444; }
+
+  /* 遮罩 */
+  .mask {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: 99;
+  }
+
+  .mask.visible { opacity: 1; pointer-events: auto; }
+
+  /* 结果弹窗 */
+  .modal {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; pointer-events: none; opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .modal.visible { opacity: 1; pointer-events: auto; }
+
+  .modal-content {
+    background: #fff; border-radius: 20px;
+    padding: 40px 48px; text-align: center;
+    transform: scale(0.8); transition: transform 0.3s;
+    min-width: 240px;
+  }
+
+  .modal.visible .modal-content { transform: scale(1); }
+
+  .modal-emoji { font-size: 48px; margin-bottom: 12px; }
+
+  .modal-title { font-size: 13px; color: #999; margin-bottom: 8px; }
+
+  .modal-name {
+    font-size: 24px; font-weight: 700;
+    color: #2d2d2d; margin-bottom: 24px;
+    word-break: break-all;
+  }
+
+  .modal-btn {
+    display: inline-block; padding: 10px 48px;
+    background: #2d2d2d; color: #fff;
+    font-size: 15px; border-radius: 30px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>幸运大转盘</h1>
+
+<div class="wheel-wrapper">
+  <div class="pointer"></div>
+  <canvas id="wheelCanvas" class="wheel-canvas"></canvas>
+</div>
+
+<div>
+  <button class="btn btn-spin" id="spinBtn">抽奖</button><br>
+  <button class="btn btn-settings" id="openSettings">⚙ 设置奖品</button>
+</div>
+
+<!-- 遮罩 -->
+<div class="mask" id="mask"></div>
+
+<!-- 设置面板 -->
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">
+    <h2>奖品设置</h2>
+    <button class="btn-close" id="closeSettings">×</button>
+  </div>
+  <div class="settings-body" id="prizeList"></div>
+  <div class="settings-footer">
+    <div class="btn-add" id="addPrize">+ 添加奖品</div>
+    <div class="bar-preview" id="barPreview"></div>
+    <button class="btn btn-save" id="saveBtn">保存</button>
+  </div>
+</div>
+
+<!-- 结果弹窗 -->
+<div class="modal" id="resultModal">
+  <div class="modal-content">
+    <div class="modal-emoji">🎉</div>
+    <div class="modal-title">恭喜您抽中</div>
+    <div class="modal-name" id="resultName"></div>
+    <div class="modal-btn" id="closeModal">确定</div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'wheel_prizes';
+const WHEEL_SIZE = 300;
+const R = WHEEL_SIZE / 2;
+
+const COLORS = [
+  '#3a3a3a','#e8e0d4','#c9a87c','#f5efe6',
+  '#8b7355','#d4c5b0','#5c5040','#ede6da',
+  '#a39176','#f0e8db','#6b5e4e','#ddd4c6',
+];
+
+function getDefaults() {
+  return [
+    { name: '一等奖', weight: 10 },
+    { name: '二等奖', weight: 20 },
+    { name: '三等奖', weight: 30 },
+    { name: '参与奖', weight: 40 },
+  ];
+}
+
+function loadPrizes() {
+  try {
+    const d = localStorage.getItem(STORAGE_KEY);
+    return d ? JSON.parse(d) : getDefaults();
+  } catch { return getDefaults(); }
+}
+
+function savePrizes(list) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+// Canvas 绘制
+const canvas = document.getElementById('wheelCanvas');
+canvas.width = WHEEL_SIZE;
+canvas.height = WHEEL_SIZE;
+const ctx = canvas.getContext('2d');
+
+let currentRotation = 0;
+let isSpinning = false;
+let prizes = loadPrizes();
+
+function drawWheel() {
+  ctx.clearRect(0, 0, WHEEL_SIZE, WHEEL_SIZE);
+
+  const total = prizes.reduce((s, p) => s + p.weight, 0);
+  const sweepAll = (2 * Math.PI) / total;
+  let start = -Math.PI / 2; // 从顶部开始
+
+  prizes.forEach((prize, i) => {
+    const sweep = prize.weight * sweepAll;
+    const end = start + sweep;
+    const color = COLORS[i % COLORS.length];
+
+    // 扇形
+    ctx.beginPath();
+    ctx.moveTo(R, R);
+    ctx.arc(R, R, R - 4, start, end);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    // 分隔线（圆心→边缘）
+    ctx.beginPath();
+    ctx.moveTo(R, R);
+    ctx.lineTo(R + (R - 4) * Math.cos(start), R + (R - 4) * Math.sin(start));
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(R, R);
+    ctx.lineTo(R + (R - 4) * Math.cos(end), R + (R - 4) * Math.sin(end));
+    ctx.stroke();
+
+    // 外圈描边
+    ctx.beginPath();
+    ctx.arc(R, R, R - 4, start, end);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 文字
+    const isDark = ['#3a3a3a','#5c5040','#6b5e4e','#8b7355'].includes(color);
+    const mid = start + sweep / 2;
+    ctx.save();
+    ctx.translate(R + (R * 0.55) * Math.cos(mid), R + (R * 0.55) * Math.sin(mid));
+    ctx.rotate(mid + Math.PI / 2);
+    ctx.fillStyle = isDark ? '#ffffff' : '#333333';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const sweepDeg = (sweep / (2 * Math.PI)) * 360;
+    const fontSize = sweepDeg < 25 ? 9 : sweepDeg < 45 ? 11 : 13;
+    ctx.font = `600 ${fontSize}px sans-serif`;
+    const maxLen = sweepDeg < 25 ? 3 : sweepDeg < 45 ? 4 : 6;
+    const text = prize.name.length > maxLen ? prize.name.slice(0, maxLen) + '…' : prize.name;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+
+    start = end;
+  });
+
+  // 中心圆
+  ctx.beginPath();
+  ctx.arc(R, R, 18, 0, 2 * Math.PI);
+  ctx.fillStyle = '#2d2d2d';
+  ctx.fill();
+}
+
+function spin() {
+  if (isSpinning || prizes.length < 2) return;
+
+  isSpinning = true;
+  document.getElementById('spinBtn').disabled = true;
+
+  const total = prizes.reduce((s, p) => s + p.weight, 0);
+  let rand = Math.random() * total;
+  let prizeIndex = 0;
+  let accumDeg = 0;
+
+  for (let i = 0; i < prizes.length; i++) {
+    if (rand < prizes[i].weight) { prizeIndex = i; break; }
+    rand -= prizes[i].weight;
+    accumDeg += (prizes[i].weight / total) * 360;
+  }
+
+  const sweepDeg = (prizes[prizeIndex].weight / total) * 360;
+  const target = 360 - (accumDeg + sweepDeg / 2);
+  const extraSpins = (6 + Math.floor(Math.random() * 3)) * 360;
+  const totalRot = currentRotation + extraSpins + target;
+
+  canvas.classList.add('spinning');
+  canvas.style.transform = `rotate(${totalRot}deg)`;
+  currentRotation = totalRot;
+
+  setTimeout(() => {
+    isSpinning = false;
+    document.getElementById('spinBtn').disabled = false;
+    canvas.classList.remove('spinning');
+    showResult(prizes[prizeIndex].name);
+  }, 4200);
+}
+
+function showResult(name) {
+  document.getElementById('resultName').textContent = name;
+  document.getElementById('resultModal').classList.add('visible');
+}
+
+function hideResult() {
+  document.getElementById('resultModal').classList.remove('visible');
+}
+
+// 设置面板
+function openSettings() {
+  renderSettings();
+  document.getElementById('mask').classList.add('visible');
+  document.getElementById('settingsPanel').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('mask').classList.remove('visible');
+  document.getElementById('settingsPanel').classList.remove('open');
+}
+
+function renderSettings() {
+  const total = prizes.reduce((s, p) => s + p.weight, 0);
+  const list = document.getElementById('prizeList');
+  const bar = document.getElementById('barPreview');
+
+  list.innerHTML = prizes.map((p, i) => {
+    const pct = total > 0 ? Math.round((p.weight / total) * 100) : 0;
+    return `
+      <div class="prize-item" data-i="${i}">
+        <div class="color-swatch" style="background:${COLORS[i % COLORS.length]}"></div>
+        <input class="prize-name" type="text" value="${escHtml(p.name)}"
+          oninput="updateName(${i}, this.value)" />
+        <div class="weight-ctrl">
+          <button class="weight-btn" onclick="updateWeight(${i}, -1)">−</button>
+          <span class="weight-val">${p.weight}</span>
+          <button class="weight-btn" onclick="updateWeight(${i}, 1)">+</button>
+        </div>
+        <span class="pct-tag">${pct}%</span>
+        <button class="btn-del" onclick="deletePrize(${i})" ${prizes.length <= 2 ? 'disabled' : ''}>×</button>
+      </div>
+    `;
+  }).join('');
+
+  bar.innerHTML = prizes.map((p, i) => {
+    const pct = total > 0 ? Math.round((p.weight / total) * 100) : 0;
+    return `<div class="bar-seg" style="width:${pct}%;background:${COLORS[i % COLORS.length]}"></div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function updateName(i, val) {
+  prizes[i].name = val;
+}
+
+function updateWeight(i, delta) {
+  const cur = prizes[i].weight;
+  const step = cur < 10 ? 1 : 5;
+  prizes[i].weight = Math.max(1, Math.min(999, cur + delta * step));
+  renderSettings();
+}
+
+function deletePrize(i) {
+  if (prizes.length <= 2) return;
+  prizes.splice(i, 1);
+  renderSettings();
+}
+
+function addPrize() {
+  if (prizes.length >= 12) return;
+  prizes.push({ name: '', weight: 10 });
+  renderSettings();
+}
+
+function savePrizesFromSettings() {
+  const inputs = document.querySelectorAll('.prize-item');
+  const valid = [];
+  inputs.forEach((el, i) => {
+    const name = el.querySelector('.prize-name').value.trim();
+    if (name) valid.push({ name, weight: prizes[i] ? prizes[i].weight : 1 });
+  });
+
+  if (valid.length < 2) {
+    alert('至少需要2个有效奖品');
+    return;
+  }
+
+  prizes = valid;
+  savePrizes(prizes);
+  closeSettings();
+  drawWheel();
+  currentRotation = 0;
+  canvas.style.transform = 'rotate(0deg)';
+}
+
+// 事件绑定
+document.getElementById('spinBtn').addEventListener('click', spin);
+document.getElementById('openSettings').addEventListener('click', openSettings);
+document.getElementById('closeSettings').addEventListener('click', closeSettings);
+document.getElementById('mask').addEventListener('click', closeSettings);
+document.getElementById('addPrize').addEventListener('click', addPrize);
+document.getElementById('saveBtn').addEventListener('click', savePrizesFromSettings);
+document.getElementById('closeModal').addEventListener('click', hideResult);
+
+// 初始化
+drawWheel();
+</script>
+</body>
+</html>
